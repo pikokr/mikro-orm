@@ -2,7 +2,7 @@ import { inspect } from 'util';
 import type { Configuration } from './utils';
 import { QueryHelper, TransactionContext, Utils } from './utils';
 import type { AssignOptions, EntityLoaderOptions, EntityRepository, IdentifiedReference } from './entity';
-import { EntityAssigner, EntityFactory, EntityLoader, EntityValidator, Reference } from './entity';
+import { EntityAssigner, EntityFactory, EntityLoader, EntityValidator, helper, Reference } from './entity';
 import { ChangeSetType, UnitOfWork } from './unit-of-work';
 import type { CountOptions, DeleteOptions, EntityManagerType, FindOneOptions, FindOneOrFailOptions, FindOptions, IDatabaseDriver, LockOptions, NativeInsertUpdateOptions, UpdateOptions, GetReferenceOptions, EntityField } from './drivers';
 import type { AnyEntity, AutoPath, ConnectionType, Dictionary, EntityData, EntityDictionary, EntityDTO, EntityMetadata, EntityName, FilterDef, FilterQuery, GetRepository, Loaded, Populate, PopulateOptions, Primary, RequiredEntityData } from './typings';
@@ -72,7 +72,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Gets repository for given entity. You can pass either string name or entity class reference.
    */
-  getRepository<T extends AnyEntity<T>, U extends EntityRepository<T> = EntityRepository<T>>(entityName: EntityName<T>): GetRepository<T, U> {
+  getRepository<T extends Record<symbol, any>, U extends EntityRepository<T> = EntityRepository<T>>(entityName: EntityName<T>): GetRepository<T, U> {
     entityName = Utils.className(entityName);
 
     if (!this.repositoryMap[entityName]) {
@@ -94,7 +94,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Finds all entities matching your `where` query. You can pass additional options via the `options` parameter.
    */
-  async find<T extends AnyEntity<T>, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOptions<T, P> = {}): Promise<Loaded<T, P>[]> {
+  async find<T, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOptions<T, P> = {}): Promise<Loaded<T, P>[]> {
     if (options.disableIdentityMap) {
       const em = this.getContext(false);
       const fork = em.fork();
@@ -153,7 +153,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
 
     if (meta.virtual) {
       await em.unitOfWork.dispatchOnLoadEvent();
-      await em.storeCache(options.cache, cached!, () => ret.map(e => e.__helper!.toPOJO()));
+      await em.storeCache(options.cache, cached!, () => ret.map(e => helper(e).toPOJO()));
 
       return ret as Loaded<T, P>[];
     }
@@ -167,7 +167,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
       lookup: false,
     });
     await em.unitOfWork.dispatchOnLoadEvent();
-    await em.storeCache(options.cache, cached!, () => unique.map(e => e.__helper!.toPOJO()));
+    await em.storeCache(options.cache, cached!, () => unique.map(e => helper(e).toPOJO()));
 
     return unique as Loaded<T, P>[];
   }
@@ -191,17 +191,17 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Registers global filter to this entity manager. Global filters are enabled by default (unless disabled via last parameter).
    */
-  addFilter<T1 extends AnyEntity<T1>>(name: string, cond: FilterQuery<T1> | ((args: Dictionary) => FilterQuery<T1>), entityName?: EntityName<T1> | [EntityName<T1>], enabled?: boolean): void;
+  addFilter<T1>(name: string, cond: FilterQuery<T1> | ((args: Dictionary) => FilterQuery<T1>), entityName?: EntityName<T1> | [EntityName<T1>], enabled?: boolean): void;
 
   /**
    * Registers global filter to this entity manager. Global filters are enabled by default (unless disabled via last parameter).
    */
-  addFilter<T1 extends AnyEntity<T1>, T2 extends AnyEntity<T2>>(name: string, cond: FilterQuery<T1 | T2> | ((args: Dictionary) => FilterQuery<T1 | T2>), entityName?: [EntityName<T1>, EntityName<T2>], enabled?: boolean): void;
+  addFilter<T1, T2>(name: string, cond: FilterQuery<T1 | T2> | ((args: Dictionary) => FilterQuery<T1 | T2>), entityName?: [EntityName<T1>, EntityName<T2>], enabled?: boolean): void;
 
   /**
    * Registers global filter to this entity manager. Global filters are enabled by default (unless disabled via last parameter).
    */
-  addFilter<T1 extends AnyEntity<T1>, T2 extends AnyEntity<T2>, T3 extends AnyEntity<T3>>(name: string, cond: FilterQuery<T1 | T2 | T3> | ((args: Dictionary) => FilterQuery<T1 | T2 | T3>), entityName?: [EntityName<T1>, EntityName<T2>, EntityName<T3>], enabled?: boolean): void;
+  addFilter<T1, T2, T3>(name: string, cond: FilterQuery<T1 | T2 | T3> | ((args: Dictionary) => FilterQuery<T1 | T2 | T3>), entityName?: [EntityName<T1>, EntityName<T2>, EntityName<T3>], enabled?: boolean): void;
 
   /**
    * Registers global filter to this entity manager. Global filters are enabled by default (unless disabled via last parameter).
@@ -235,7 +235,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     this.getContext(false).flushMode = flushMode;
   }
 
-  protected async processWhere<T extends AnyEntity<T>, P extends string = never>(entityName: string, where: FilterQuery<T>, options: FindOptions<T, P> | FindOneOptions<T, P>, type: 'read' | 'update' | 'delete'): Promise<FilterQuery<T>> {
+  protected async processWhere<T, P extends string = never>(entityName: string, where: FilterQuery<T>, options: FindOptions<T, P> | FindOneOptions<T, P>, type: 'read' | 'update' | 'delete'): Promise<FilterQuery<T>> {
     where = QueryHelper.processWhere({
       where: where as FilterQuery<T>,
       entityName,
@@ -250,7 +250,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     return where;
   }
 
-  protected applyDiscriminatorCondition<T extends AnyEntity<T>>(entityName: string, where: FilterQuery<T>): FilterQuery<T> {
+  protected applyDiscriminatorCondition<T>(entityName: string, where: FilterQuery<T>): FilterQuery<T> {
     const meta = this.metadata.find(entityName);
 
     if (!meta || !meta.discriminatorValue) {
@@ -275,7 +275,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * @internal
    */
-  async applyFilters<T extends AnyEntity<T>>(entityName: string, where: FilterQuery<T>, options: Dictionary<boolean | Dictionary> | string[] | boolean, type: 'read' | 'update' | 'delete'): Promise<FilterQuery<T>> {
+  async applyFilters<T>(entityName: string, where: FilterQuery<T>, options: Dictionary<boolean | Dictionary> | string[] | boolean, type: 'read' | 'update' | 'delete'): Promise<FilterQuery<T>> {
     const meta = this.metadata.find<T>(entityName);
     const filters: FilterDef[] = [];
     const ret: Dictionary[] = [];
@@ -333,7 +333,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    * Calls `em.find()` and `em.count()` with the same arguments (where applicable) and returns the results as tuple
    * where first element is the array of entities and the second is the count.
    */
-  async findAndCount<T extends AnyEntity<T>, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOptions<T, P> = {}): Promise<[Loaded<T, P>[], number]> {
+  async findAndCount<T, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOptions<T, P> = {}): Promise<[Loaded<T, P>[], number]> {
     const [entities, count] = await Promise.all([
       this.find<T, P>(entityName, where, options),
       this.count(entityName, where, options),
@@ -345,7 +345,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Finds first entity matching your `where` query.
    */
-  async findOne<T extends AnyEntity<T>, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOneOptions<T, P> = {}): Promise<Loaded<T, P> | null> {
+  async findOne<T, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOneOptions<T, P> = {}): Promise<Loaded<T, P> | null> {
     if (options.disableIdentityMap) {
       const em = this.getContext(false);
       const fork = em.fork();
@@ -405,7 +405,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     }
 
     await em.unitOfWork.dispatchOnLoadEvent();
-    await em.storeCache(options.cache, cached!, () => entity!.__helper!.toPOJO());
+    await em.storeCache(options.cache, cached!, () => helper(entity).toPOJO());
 
     return entity as Loaded<T, P>;
   }
@@ -416,7 +416,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    * You can override the factory for creating this method via `options.failHandler` locally
    * or via `Configuration.findOneOrFailHandler` (`findExactlyOneOrFailHandler` when specifying `strict`) globally.
    */
-  async findOneOrFail<T extends AnyEntity<T>, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOneOrFailOptions<T, P> = {}): Promise<Loaded<T, P>> {
+  async findOneOrFail<T, P extends string = never>(entityName: EntityName<T>, where: FilterQuery<T>, options: FindOneOrFailOptions<T, P> = {}): Promise<Loaded<T, P>> {
     let entity: Loaded<T, P> | null;
     let isStrictViolation = false;
 
@@ -523,13 +523,13 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Fires native insert query. Calling this has no side effects on the context (identity map).
    */
-  async nativeInsert<T extends AnyEntity<T>>(entityNameOrEntity: EntityName<T> | T, data?: EntityData<T> | T, options: NativeInsertUpdateOptions<T> = {}): Promise<Primary<T>> {
+  async nativeInsert<T>(entityNameOrEntity: EntityName<T> | T, data?: EntityData<T> | T, options: NativeInsertUpdateOptions<T> = {}): Promise<Primary<T>> {
     const em = this.getContext(false);
 
     let entityName;
 
     if (data === undefined) {
-      entityName = entityNameOrEntity.constructor.name;
+      entityName = (entityNameOrEntity as Dictionary).constructor.name;
       data = entityNameOrEntity as T;
     } else {
       entityName = Utils.className(entityNameOrEntity as EntityName<T>);
@@ -549,7 +549,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Fires native update query. Calling this has no side effects on the context (identity map).
    */
-  async nativeUpdate<T extends AnyEntity<T>>(entityName: EntityName<T>, where: FilterQuery<T>, data: EntityData<T>, options: UpdateOptions<T> = {}): Promise<number> {
+  async nativeUpdate<T>(entityName: EntityName<T>, where: FilterQuery<T>, data: EntityData<T>, options: UpdateOptions<T> = {}): Promise<number> {
     const em = this.getContext(false);
 
     entityName = Utils.className(entityName);
@@ -565,7 +565,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Fires native delete query. Calling this has no side effects on the context (identity map).
    */
-  async nativeDelete<T extends AnyEntity<T>>(entityName: EntityName<T>, where: FilterQuery<T>, options: DeleteOptions<T> = {}): Promise<number> {
+  async nativeDelete<T>(entityName: EntityName<T>, where: FilterQuery<T>, options: DeleteOptions<T> = {}): Promise<number> {
     const em = this.getContext(false);
 
     entityName = Utils.className(entityName);
@@ -579,7 +579,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Maps raw database result to an entity and merges it to this EntityManager.
    */
-  map<T extends AnyEntity<T>>(entityName: EntityName<T>, result: EntityDictionary<T>, options: { schema?: string } = {}): T {
+  map<T>(entityName: EntityName<T>, result: EntityDictionary<T>, options: { schema?: string } = {}): T {
     entityName = Utils.className(entityName);
     const meta = this.metadata.get(entityName);
     const data = this.driver.mapResult(result, meta) as Dictionary;
@@ -599,41 +599,41 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    * Merges given entity to this EntityManager so it becomes managed. You can force refreshing of existing entities
    * via second parameter. By default, it will return already loaded entities without modifying them.
    */
-  merge<T extends AnyEntity<T>>(entity: T, options?: MergeOptions): T;
+  merge<T>(entity: T, options?: MergeOptions): T;
 
   /**
    * Merges given entity to this EntityManager so it becomes managed. You can force refreshing of existing entities
    * via second parameter. By default, it will return already loaded entities without modifying them.
    */
-  merge<T extends AnyEntity<T>>(entityName: EntityName<T>, data: EntityData<T> | EntityDTO<T>, options?: MergeOptions): T;
+  merge<T>(entityName: EntityName<T>, data: EntityData<T> | EntityDTO<T>, options?: MergeOptions): T;
 
   /**
    * Merges given entity to this EntityManager so it becomes managed. You can force refreshing of existing entities
    * via second parameter. By default, it will return already loaded entities without modifying them.
    */
-  merge<T extends AnyEntity<T>>(entityName: EntityName<T> | T, data?: EntityData<T> | EntityDTO<T> | MergeOptions, options: MergeOptions = {}): T {
+  merge<T>(entityName: EntityName<T> | T, data?: EntityData<T> | EntityDTO<T> | MergeOptions, options: MergeOptions = {}): T {
     const em = this.getContext();
 
     if (Utils.isEntity(entityName)) {
-      return em.merge(entityName.constructor.name, entityName as unknown as EntityData<T>, data as MergeOptions);
+      return em.merge((entityName as Dictionary).constructor.name, entityName as unknown as EntityData<T>, data as MergeOptions);
     }
 
     entityName = Utils.className(entityName as string);
     em.validator.validatePrimaryKey(data as EntityData<T>, em.metadata.get(entityName));
     let entity = em.unitOfWork.tryGetById<T>(entityName, data as FilterQuery<T>, options.schema, false);
 
-    if (entity && entity.__helper!.__initialized && !options.refresh) {
+    if (entity && helper(entity).__initialized && !options.refresh) {
       return entity;
     }
 
     const meta = em.metadata.find(entityName)!;
     const childMeta = em.metadata.getByDiscriminatorColumn(meta, data as EntityData<T>);
 
-    entity = Utils.isEntity<T>(data) ? data : em.entityFactory.create<T>(entityName, data as EntityData<T>, { merge: true, ...options });
+    entity = Utils.isEntity(data) ? data as T : em.entityFactory.create<T>(entityName, data, { merge: true, ...options });
     em.validator.validate(entity, data, childMeta ?? meta);
     em.unitOfWork.merge(entity);
 
-    return entity;
+    return entity!;
   }
 
   /**
@@ -644,7 +644,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    * the whole `data` parameter will be passed. This means we can also define `constructor(data: Partial<T>)` and
    * `em.create()` will pass the data into it (unless we have a property named `data` too).
    */
-  create<T extends AnyEntity<T>>(entityName: EntityName<T>, data: RequiredEntityData<T>, options: CreateOptions = {}): T {
+  create<T>(entityName: EntityName<T>, data: RequiredEntityData<T>, options: CreateOptions = {}): T {
     const em = this.getContext();
     const entity = em.entityFactory.create(entityName, data, { ...options, newEntity: !options.managed });
     options.persist ??= em.config.get('persistOnCreate');
@@ -659,34 +659,34 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Shortcut for `wrap(entity).assign(data, { em })`
    */
-  assign<T extends AnyEntity<T>>(entity: T, data: EntityData<T> | Partial<EntityDTO<T>>, options: AssignOptions = {}): T {
+  assign<T>(entity: T, data: EntityData<T> | Partial<EntityDTO<T>>, options: AssignOptions = {}): T {
     return EntityAssigner.assign(entity, data, { em: this.getContext(), ...options });
   }
 
   /**
    * Gets a reference to the entity identified by the given type and identifier without actually loading it, if the entity is not yet loaded
    */
-  getReference<T extends AnyEntity<T>, PK extends keyof T>(entityName: EntityName<T>, id: Primary<T>, options: Omit<GetReferenceOptions, 'wrapped'> & { wrapped: true }): IdentifiedReference<T, PK>;
+  getReference<T, PK extends keyof T>(entityName: EntityName<T>, id: Primary<T>, options: Omit<GetReferenceOptions, 'wrapped'> & { wrapped: true }): IdentifiedReference<T, PK>;
 
   /**
    * Gets a reference to the entity identified by the given type and identifier without actually loading it, if the entity is not yet loaded
    */
-  getReference<T extends AnyEntity<T>>(entityName: EntityName<T>, id: Primary<T> | Primary<T>[]): T;
+  getReference<T>(entityName: EntityName<T>, id: Primary<T> | Primary<T>[]): T;
 
   /**
    * Gets a reference to the entity identified by the given type and identifier without actually loading it, if the entity is not yet loaded
    */
-  getReference<T extends AnyEntity<T>>(entityName: EntityName<T>, id: Primary<T>, options: Omit<GetReferenceOptions, 'wrapped'> & { wrapped: false }): T;
+  getReference<T>(entityName: EntityName<T>, id: Primary<T>, options: Omit<GetReferenceOptions, 'wrapped'> & { wrapped: false }): T;
 
   /**
    * Gets a reference to the entity identified by the given type and identifier without actually loading it, if the entity is not yet loaded
    */
-  getReference<T extends AnyEntity<T>>(entityName: EntityName<T>, id: Primary<T>, options?: GetReferenceOptions): T | Reference<T>;
+  getReference<T>(entityName: EntityName<T>, id: Primary<T>, options?: GetReferenceOptions): T | Reference<T>;
 
   /**
    * Gets a reference to the entity identified by the given type and identifier without actually loading it, if the entity is not yet loaded
    */
-  getReference<T extends AnyEntity<T>>(entityName: EntityName<T>, id: Primary<T>, options: GetReferenceOptions = {}): T | Reference<T> {
+  getReference<T>(entityName: EntityName<T>, id: Primary<T>, options: GetReferenceOptions = {}): T | Reference<T> {
     options.convertCustomTypes ??= false;
     const meta = this.metadata.get(Utils.className(entityName));
 
@@ -747,7 +747,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     for (const ent of entities) {
       if (!Utils.isEntity(ent, true)) {
         /* istanbul ignore next */
-        const meta = typeof ent === 'object' ? em.metadata.find(ent.constructor.name) : undefined;
+        const meta = typeof ent === 'object' ? em.metadata.find((ent as Dictionary).constructor.name) : undefined;
         throw ValidationError.notDiscoveredEntity(ent, meta);
       }
 
@@ -782,7 +782,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    *
    * To remove entities by condition, use `em.nativeDelete()`.
    */
-  remove<T extends AnyEntity<T>>(entity: T | Reference<T> | (T | Reference<T>)[]): this {
+  remove<T>(entity: T | Reference<T> | (T | Reference<T>)[]): this {
     const em = this.getContext();
 
     if (Utils.isEntity<T>(entity)) {
@@ -859,7 +859,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Checks whether given property can be populated on the entity.
    */
-  canPopulate<T extends AnyEntity<T>>(entityName: EntityName<T>, property: string): boolean {
+  canPopulate<T>(entityName: EntityName<T>, property: string): boolean {
     entityName = Utils.className(entityName);
     const [p, ...parts] = property.split('.');
     const props = this.metadata.get(entityName).properties;
@@ -879,7 +879,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * Loads specified relations in batch. This will execute one query for each relation, that will populate it on all of the specified entities.
    */
-  async populate<T extends AnyEntity<T>, P extends string = never>(entities: T | T[], populate: AutoPath<T, P>[] | boolean, options: EntityLoaderOptions<T, P> = {}): Promise<Loaded<T, P>[]> {
+  async populate<T, P extends string = never>(entities: T | T[], populate: AutoPath<T, P>[] | boolean, options: EntityLoaderOptions<T, P> = {}): Promise<Loaded<T, P>[]> {
     entities = Utils.asArray(entities);
 
     if (entities.length === 0) {
@@ -887,7 +887,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     }
 
     const em = this.getContext();
-    const entityName = entities[0].constructor.name;
+    const entityName = (entities[0] as Dictionary).constructor.name;
     const preparedPopulate = em.preparePopulate<T>(entityName, { populate: populate as true });
     await em.entityLoader.populate(entityName, entities, preparedPopulate, options);
 
@@ -1030,7 +1030,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     }
   }
 
-  private async lockAndPopulate<T extends AnyEntity<T>, P extends string = never>(entityName: string, entity: T, where: FilterQuery<T>, options: FindOneOptions<T, P>): Promise<Loaded<T, P>> {
+  private async lockAndPopulate<T, P extends string = never>(entityName: string, entity: T, where: FilterQuery<T>, options: FindOneOptions<T, P>): Promise<Loaded<T, P>> {
     if (options.lockMode === LockMode.OPTIMISTIC) {
       await this.lock(entity, options.lockMode, {
         lockVersion: options.lockVersion,
@@ -1062,7 +1062,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     }, [] as AutoPath<T, P>[]);
   }
 
-  private preparePopulate<T extends AnyEntity<T>, P extends string = never>(entityName: string, options: Pick<FindOptions<T, P>, 'populate' | 'strategy' | 'fields'>): PopulateOptions<T>[] {
+  private preparePopulate<T, P extends string = never>(entityName: string, options: Pick<FindOptions<T, P>, 'populate' | 'strategy' | 'fields'>): PopulateOptions<T>[] {
     // infer populate hint if only `fields` are available
     if (!options.populate && options.fields) {
       options.populate = this.buildFields(options.fields);
@@ -1100,17 +1100,17 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
    * when the entity is found in identity map, we check if it was partially loaded or we are trying to populate
    * some additional lazy properties, if so, we reload and merge the data from database
    */
-  protected shouldRefresh<T extends AnyEntity<T>, P extends string = never>(meta: EntityMetadata<T>, entity: T, options: FindOneOptions<T, P>) {
-    if (!entity.__helper!.__initialized || options.refresh) {
+  protected shouldRefresh<T, P extends string = never>(meta: EntityMetadata<T>, entity: T, options: FindOneOptions<T, P>) {
+    if (!helper(entity).__initialized || options.refresh) {
       return true;
     }
 
     let autoRefresh: boolean;
 
     if (options.fields) {
-      autoRefresh = options.fields.some(field => !entity!.__helper!.__loadedProperties.has(field as string));
+      autoRefresh = options.fields.some(field => !helper(entity).__loadedProperties.has(field as string));
     } else {
-      autoRefresh = meta.comparableProps.some(prop => !prop.lazy && !entity!.__helper!.__loadedProperties.has(prop.name));
+      autoRefresh = meta.comparableProps.some(prop => !prop.lazy && !helper(entity).__loadedProperties.has(prop.name));
     }
 
     if (autoRefresh) {
@@ -1118,7 +1118,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
     }
 
     if (Array.isArray(options.populate)) {
-      return options.populate.some(field => !entity!.__helper!.__loadedProperties.has(field as string));
+      return options.populate.some(field => !helper(entity).__loadedProperties.has(field as string));
     }
 
     return !!options.populate;
@@ -1127,7 +1127,7 @@ export class EntityManager<D extends IDatabaseDriver = IDatabaseDriver> {
   /**
    * @internal
    */
-  async tryCache<T extends AnyEntity, R>(entityName: string, config: boolean | number | [string, number] | undefined, key: unknown, refresh?: boolean, merge?: boolean): Promise<{ data?: R; key: string } | undefined> {
+  async tryCache<T, R>(entityName: string, config: boolean | number | [string, number] | undefined, key: unknown, refresh?: boolean, merge?: boolean): Promise<{ data?: R; key: string } | undefined> {
     if (!config) {
       return undefined;
     }

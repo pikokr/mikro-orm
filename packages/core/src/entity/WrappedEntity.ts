@@ -12,7 +12,7 @@ import type { LockMode } from '../enums';
 import { ValidationError } from '../errors';
 import type { EntityIdentifier } from './EntityIdentifier';
 
-export class WrappedEntity<T extends AnyEntity<T>, PK extends keyof T> {
+export class WrappedEntity<T, PK extends keyof T> {
 
   __initialized = true;
   __touched = false;
@@ -80,7 +80,7 @@ export class WrappedEntity<T extends AnyEntity<T>, PK extends keyof T> {
       throw ValidationError.entityNotManaged(this.entity);
     }
 
-    await this.__em.findOne(this.entity.constructor.name, this.entity, { refresh: true, lockMode, populate, connectionType, schema: this.__schema });
+    await this.__em.findOne((this.entity as object).constructor.name, this.entity, { refresh: true, lockMode, populate, connectionType, schema: this.__schema });
     this.populated(populated);
     this.__lazyInitialized = true;
 
@@ -134,7 +134,7 @@ export class WrappedEntity<T extends AnyEntity<T>, PK extends keyof T> {
   }
 
   setPrimaryKey(id: Primary<T> | null) {
-    this.entity[this.entity.__meta!.primaryKeys[0] as string] = id;
+    this.entity[this.__meta!.primaryKeys[0] as string] = id;
   }
 
   getSerializedPrimaryKey(): string {
@@ -142,19 +142,19 @@ export class WrappedEntity<T extends AnyEntity<T>, PK extends keyof T> {
   }
 
   get __meta(): EntityMetadata<T> {
-    return this.entity.__meta!;
+    return (this.entity as AnyEntity<T>).__meta!;
   }
 
   get __platform() {
-    return this.entity.__platform!;
+    return (this.entity as AnyEntity<T>).__platform!;
   }
 
   get __primaryKeys(): Primary<T>[] {
-    return Utils.getPrimaryKeyValues(this.entity, this.entity.__meta!.primaryKeys);
+    return Utils.getPrimaryKeyValues(this.entity, this.__meta!.primaryKeys);
   }
 
   [inspect.custom]() {
-    return `[WrappedEntity<${this.entity.__meta!.className}>]`;
+    return `[WrappedEntity<${this.__meta!.className}>]`;
   }
 
 }

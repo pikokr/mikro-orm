@@ -18,7 +18,7 @@ import {
   DatabaseDriver,
   EntityManager,
   EntityRepository,
-  LockMode, MikroORM,
+  LockMode,
   Platform,
 } from '@mikro-orm/core';
 

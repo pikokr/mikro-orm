@@ -1,6 +1,6 @@
 import { Reference } from '../entity/Reference';
 import { Utils } from './Utils';
-import type { AnyEntity, Dictionary, EntityMetadata, EntityProperty, FilterDef, ObjectQuery, FilterQuery } from '../typings';
+import type { Dictionary, EntityMetadata, EntityProperty, FilterDef, ObjectQuery, FilterQuery } from '../typings';
 import { ARRAY_OPERATORS, GroupOperator, ReferenceType } from '../enums';
 import type { Platform } from '../platforms';
 import type { MetadataStorage } from '../metadata/MetadataStorage';
@@ -28,7 +28,7 @@ export class QueryHelper {
     }
 
     if (Array.isArray(params)) {
-      return params.map(item => QueryHelper.processParams(item));
+      return (params as unknown[]).map(item => QueryHelper.processParams(item));
     }
 
     if (Utils.isPlainObject(params)) {
@@ -46,7 +46,7 @@ export class QueryHelper {
     return params;
   }
 
-  static inlinePrimaryKeyObjects<T extends AnyEntity<T>>(where: Dictionary, meta: EntityMetadata<T>, metadata: MetadataStorage, key?: string): boolean {
+  static inlinePrimaryKeyObjects<T>(where: Dictionary, meta: EntityMetadata<T>, metadata: MetadataStorage, key?: string): boolean {
     if (Array.isArray(where)) {
       where.forEach((item, i) => {
         if (this.inlinePrimaryKeyObjects(item, meta, metadata, key)) {

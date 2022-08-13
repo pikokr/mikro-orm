@@ -1,6 +1,6 @@
 import type { CountOptions, LockOptions, DeleteOptions, FindOneOptions, FindOptions, IDatabaseDriver, NativeInsertUpdateManyOptions, NativeInsertUpdateOptions, DriverMethodOptions } from './IDatabaseDriver';
 import { EntityManagerType } from './IDatabaseDriver';
-import type { AnyEntity, ConnectionType, Dictionary, EntityData, EntityDictionary, EntityMetadata, EntityProperty, FilterQuery, PopulateOptions, Primary } from '../typings';
+import type { ConnectionType, Dictionary, EntityData, EntityDictionary, EntityMetadata, EntityProperty, FilterQuery, PopulateOptions, Primary } from '../typings';
 import type { MetadataStorage } from '../metadata';
 import type { Connection, QueryResult, Transaction } from '../connections';
 import type { Configuration, ConnectionOptions } from '../utils';
@@ -43,7 +43,7 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
 
   abstract nativeDelete<T>(entityName: string, where: FilterQuery<T>, options?: DeleteOptions<T>): Promise<QueryResult<T>>;
 
-  abstract count<T extends AnyEntity<T>, P extends string = never>(entityName: string, where: FilterQuery<T>, options?: CountOptions<T, P>): Promise<number>;
+  abstract count<T, P extends string = never>(entityName: string, where: FilterQuery<T>, options?: CountOptions<T, P>): Promise<number>;
 
   createEntityManager<D extends IDatabaseDriver = IDatabaseDriver>(useContext?: boolean): D[typeof EntityManagerType] {
     return new EntityManager(this.config, this, this.metadata, useContext) as unknown as EntityManager<D>;
@@ -58,7 +58,7 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
     throw new Error(`Aggregations are not supported by ${this.constructor.name} driver`);
   }
 
-  async loadFromPivotTable<T, O>(prop: EntityProperty, owners: Primary<O>[][], where?: FilterQuery<T>, orderBy?: QueryOrderMap<T>[], ctx?: Transaction, options?: FindOptions<T>): Promise<Dictionary<T[]>> {
+  async loadFromPivotTable<T, O>(prop: EntityProperty, owners: Primary<O>[][], where?: FilterQuery<any>, orderBy?: QueryOrderMap<T>[], ctx?: Transaction, options?: FindOptions<T, any>): Promise<Dictionary<T[]>> {
     throw new Error(`${this.constructor.name} does not use pivot tables`);
   }
 
@@ -73,7 +73,7 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
       return result ?? null;
     }
 
-    return this.comparator.mapResult(meta.className, result);
+    return this.comparator.mapResult<T>(meta.className, result);
   }
 
   async connect(): Promise<C> {
@@ -139,7 +139,7 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
   }
 
   protected inlineEmbeddables<T>(meta: EntityMetadata<T>, data: T, where?: boolean): void {
-    Object.keys(data).forEach(k => {
+    Object.keys(data as Dictionary).forEach(k => {
       if (Utils.isOperator(k)) {
         Utils.asArray(data[k]).forEach(payload => this.inlineEmbeddables(meta, payload, where));
       }
@@ -154,9 +154,9 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
         const props = prop.embeddedProps;
         let unknownProp = false;
 
-        Object.keys(data[prop.name]).forEach(kk => {
+        Object.keys(data[prop.name] as Dictionary).forEach(kk => {
           // explicitly allow `$exists` operator here as it cant be misused this way
-          const operator = Object.keys(data[prop.name]).some(f => Utils.isOperator(f) && f !== '$exists');
+          const operator = Object.keys(data[prop.name] as Dictionary).some(f => Utils.isOperator(f) && f !== '$exists');
 
           if (operator) {
             throw ValidationError.cannotUseOperatorsInsideEmbeddables(meta.name!, prop.name, data);
@@ -241,7 +241,7 @@ export abstract class DatabaseDriver<C extends Connection> implements IDatabaseD
     return ret;
   }
 
-  async lockPessimistic<T extends AnyEntity<T>>(entity: T, options: LockOptions): Promise<void> {
+  async lockPessimistic<T>(entity: T, options: LockOptions): Promise<void> {
     throw new Error(`Pessimistic locks are not supported by ${this.constructor.name} driver`);
   }
 

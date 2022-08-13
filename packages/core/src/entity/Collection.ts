@@ -23,7 +23,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
   private _em?: unknown;
 
   constructor(owner: O, items?: T[], initialized = true) {
-    super(owner, items);
+    super(owner as unknown as O & AnyEntity, items);
     this.initialized = !!items || initialized;
   }
 
@@ -116,14 +116,14 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
     return super.toJSON();
   }
 
-  add(...items: (T | Reference<T>)[]): void {
-    const unwrapped = items.map(i => Reference.unwrapReference(i));
+  add(...items: (T | Reference<T & AnyEntity>)[]): void {
+    const unwrapped = items.map(i => Reference.unwrapReference(i as AnyEntity)) as T[];
     unwrapped.forEach(item => this.validateItemType(item));
     this.modify('add', unwrapped);
     this.cancelOrphanRemoval(unwrapped);
   }
 
-  set(items: (T | Reference<T>)[]): void {
+  set(items: (T | Reference<T & AnyEntity>)[]): void {
     if (!this.initialized) {
       this.initialized = true;
       this.snapshot = undefined;
@@ -144,7 +144,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
   /**
    * @inheritDoc
    */
-  remove(...items: (T | Reference<T> | ((item: T) => boolean))[]): void {
+  remove(...items: (T | Reference<T & AnyEntity> | ((item: T) => boolean))[]): void {
     if (items[0] instanceof Function) {
       for (const item of this.items) {
         if (items[0](item)) {
@@ -155,7 +155,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
       return;
     }
 
-    const unwrapped = items.map(i => Reference.unwrapReference(i as T));
+    const unwrapped = items.map(i => Reference.unwrapReference(i as AnyEntity)) as T[];
     this.modify('remove', unwrapped);
     const em = this.getEntityManager(unwrapped, false);
 
@@ -166,7 +166,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
     }
   }
 
-  contains(item: (T | Reference<T>), check = true): boolean {
+  contains(item: (T | Reference<T & AnyEntity>), check = true): boolean {
     if (check) {
       this.checkInitialized();
     }
@@ -273,7 +273,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
     let em = this._em ?? this.owner.__helper!.__em;
 
     if (!em) {
-      for (const i of items as AnyEntity<T>[]) {
+      for (const i of items as AnyEntity[]) {
         if (i?.__helper!.__em) {
           em = i?.__helper!.__em;
           break;
@@ -307,7 +307,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
       const defaultOrder = this.property.referencedColumnNames.map(name => {
         return { [name]: QueryOrder.ASC };
       });
-      orderBy = this.property.orderBy || defaultOrder;
+      orderBy = this.property.orderBy as QueryOrderMap<T> || defaultOrder;
     }
 
     return Utils.asArray(orderBy);
@@ -318,7 +318,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
       // we know there is at least one item as it was checked in load method
       const pk = this.property.targetMeta!.primaryKeys[0];
       cond[pk] = { $in: [] };
-      this.items.forEach((item: AnyEntity<T>) => cond[pk].$in.push(item.__helper!.getPrimaryKey()));
+      this.items.forEach(item => cond[pk].$in.push((item as AnyEntity).__helper!.getPrimaryKey()));
     } else {
       cond[this.property.mappedBy] = this.owner.__helper!.getPrimaryKey();
     }
@@ -393,7 +393,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
       return;
     }
 
-    const check = (item: T & AnyEntity<T>) => {
+    const check = (item: AnyEntity) => {
       if (!item || item.__helper!.__initialized) {
         return false;
       }
@@ -402,7 +402,7 @@ export class Collection<T, O = unknown> extends ArrayCollection<T, O> {
     };
 
     // throw if we are modifying inverse side of M:N collection when owning side is initialized (would be ignored when persisting)
-    if (items.find(item => check(item))) {
+    if (items.find(item => check(item as AnyEntity))) {
       throw ValidationError.cannotModifyInverseCollection(this.owner, this.property);
     }
   }

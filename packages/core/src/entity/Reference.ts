@@ -1,18 +1,18 @@
 import type {
-  Populate, AnyEntity, Cast, Constructor, Dictionary, EntityProperty, IsUnknown, Primary,
+  Populate, Cast, Constructor, Dictionary, EntityProperty, IsUnknown, Primary,
   PrimaryProperty, ConnectionType,
 } from '../typings';
 import type { EntityFactory } from './EntityFactory';
 import type { LockMode } from '../enums';
-import { wrap } from './wrap';
+import { helper, wrap } from './wrap';
 
-export type IdentifiedReference<T extends AnyEntity<T>, PK extends keyof T | unknown = PrimaryProperty<T>> = true extends IsUnknown<PK> ? Reference<T> : ({ [K in Cast<PK, keyof T>]: T[K] } & Reference<T>);
+export type IdentifiedReference<T, PK extends keyof T | unknown = PrimaryProperty<T>> = true extends IsUnknown<PK> ? Reference<T> : ({ [K in Cast<PK, keyof T>]: T[K] } & Reference<T>);
 
-export class Reference<T extends AnyEntity<T>> {
+export class Reference<T> {
 
   constructor(private entity: T) {
     this.set(entity);
-    const meta = this.entity.__meta!;
+    const meta = helper(this.entity).__meta;
 
     meta.primaryKeys.forEach(primaryKey => {
       Object.defineProperty(this, primaryKey, {
@@ -31,7 +31,7 @@ export class Reference<T extends AnyEntity<T>> {
     }
   }
 
-  static create<T extends AnyEntity<T>, PK extends keyof T | unknown = PrimaryProperty<T>>(entity: T | IdentifiedReference<T, PK>): IdentifiedReference<T, PK> {
+  static create<T, PK extends keyof T | unknown = PrimaryProperty<T>>(entity: T | IdentifiedReference<T, PK>): IdentifiedReference<T, PK> {
     if (Reference.isReference(entity)) {
       return entity as IdentifiedReference<T, PK>;
     }
@@ -39,12 +39,12 @@ export class Reference<T extends AnyEntity<T>> {
     return new Reference(entity as T) as IdentifiedReference<T, PK>;
   }
 
-  static createFromPK<T extends AnyEntity<T>, PK extends keyof T | unknown = PrimaryProperty<T>>(entityType: Constructor<T>, pk: Primary<T>): IdentifiedReference<T, PK> {
+  static createFromPK<T, PK extends keyof T | unknown = PrimaryProperty<T>>(entityType: Constructor<T>, pk: Primary<T>): IdentifiedReference<T, PK> {
     const ref = this.createNakedFromPK(entityType, pk);
     return new Reference(ref) as IdentifiedReference<T, PK>;
   }
 
-  static createNakedFromPK<T extends AnyEntity<T>, PK extends keyof T | unknown = PrimaryProperty<T>>(entityType: Constructor<T>, pk: Primary<T>): T {
+  static createNakedFromPK<T, PK extends keyof T | unknown = PrimaryProperty<T>>(entityType: Constructor<T>, pk: Primary<T>): T {
     const factory = entityType.prototype.__factory as EntityFactory;
     return factory.createReference(entityType, pk, { merge: false });
   }
@@ -52,14 +52,14 @@ export class Reference<T extends AnyEntity<T>> {
   /**
    * Checks whether the argument is instance of `Reference` wrapper.
    */
-  static isReference<T extends AnyEntity<T>>(data: any): data is Reference<T> {
+  static isReference<T>(data: any): data is Reference<T> {
     return data && !!data.__reference;
   }
 
   /**
    * Wraps the entity in a `Reference` wrapper if the property is defined as `wrappedReference`.
    */
-  static wrapReference<T extends AnyEntity<T>>(entity: T | Reference<T>, prop: EntityProperty<T>): Reference<T> | T {
+  static wrapReference<T>(entity: T | Reference<T>, prop: EntityProperty<T>): Reference<T> | T {
     if (entity && prop.wrappedReference && !Reference.isReference(entity)) {
       return Reference.create(entity as T);
     }
@@ -94,7 +94,7 @@ export class Reference<T extends AnyEntity<T>> {
     const opts: Dictionary = typeof options === 'object' ? options : { prop: options };
 
     if (!this.isInitialized()) {
-      await this.entity.__helper!.init(undefined, opts?.populate, opts?.lockMode, opts?.connectionType);
+      await helper(this.entity).init(undefined, opts?.populate, opts?.lockMode, opts?.connectionType);
     }
 
     if (opts.prop) {
@@ -118,7 +118,7 @@ export class Reference<T extends AnyEntity<T>> {
 
   getEntity(): T {
     if (!this.isInitialized()) {
-      throw new Error(`Reference<${this.entity.__meta!.name}> ${this.entity.__helper!.getPrimaryKey()} not initialized`);
+      throw new Error(`Reference<${helper(this.entity).__meta.name}> ${helper(this.entity).getPrimaryKey()} not initialized`);
     }
 
     return this.entity;
@@ -129,11 +129,11 @@ export class Reference<T extends AnyEntity<T>> {
   }
 
   isInitialized(): boolean {
-    return this.entity.__helper!.__initialized;
+    return helper(this.entity).__initialized;
   }
 
   populated(populated?: boolean): void {
-    this.entity.__helper!.populated!(populated);
+    helper(this.entity).populated(populated);
   }
 
   toJSON(...args: any[]): Dictionary {

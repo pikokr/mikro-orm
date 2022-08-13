@@ -14,7 +14,7 @@ export class ArrayCollection<T, O> {
   protected _count?: number;
   private _property?: EntityProperty;
 
-  constructor(readonly owner: O & AnyEntity<O>, items?: T[]) {
+  constructor(readonly owner: O & AnyEntity, items?: T[]) {
     /* istanbul ignore next */
     if (items) {
       let i = 0;
@@ -64,9 +64,9 @@ export class ArrayCollection<T, O> {
     }) as unknown as U[];
   }
 
-  add(...items: (T | Reference<T>)[]): void {
+  add(...items: (T | Reference<T & AnyEntity>)[]): void {
     for (const item of items) {
-      const entity = Reference.unwrapReference(item);
+      const entity = Reference.unwrapReference(item as AnyEntity) as T;
 
       if (!this.contains(entity, false)) {
         this.incrementCount(1);
@@ -77,7 +77,7 @@ export class ArrayCollection<T, O> {
     }
   }
 
-  set(items: (T | Reference<T>)[]): void {
+  set(items: (T | Reference<T & AnyEntity>)[]): void {
     this.remove(...this.items);
     this.add(...items);
   }
@@ -101,13 +101,13 @@ export class ArrayCollection<T, O> {
    * is not the same as `em.remove()`. If we want to delete the entity by removing it from collection, we need to enable `orphanRemoval: true`,
    * which tells the ORM we don't want orphaned entities to exist, so we know those should be removed.
    */
-  remove(...items: (T | Reference<T>)[]): void {
+  remove(...items: (T | Reference<T & AnyEntity>)[]): void {
     for (const item of items) {
       if (!item) {
         continue;
       }
 
-      const entity = Reference.unwrapReference(item);
+      const entity = Reference.unwrapReference(item as AnyEntity) as T;
 
       if (this.items.delete(entity)) {
         this.incrementCount(-1);
@@ -141,8 +141,8 @@ export class ArrayCollection<T, O> {
     Object.assign(this, [...this.items]);
   }
 
-  contains(item: T | Reference<T>, check?: boolean): boolean {
-    const entity = Reference.unwrapReference(item);
+  contains(item: T | Reference<T & AnyEntity>, check?: boolean): boolean {
+    const entity = Reference.unwrapReference(item as AnyEntity) as T;
     return this.items.has(entity);
   }
 
@@ -152,7 +152,7 @@ export class ArrayCollection<T, O> {
 
   isInitialized(fully = false): boolean {
     if (fully) {
-      return this.initialized && [...this.items].every((item: AnyEntity<T>) => item.__helper!.__initialized);
+      return this.initialized && [...this.items].every((item: T) => (item as AnyEntity).__helper!.__initialized);
     }
 
     return this.initialized;
@@ -179,7 +179,7 @@ export class ArrayCollection<T, O> {
   /**
    * @internal
    */
-  get property(): EntityProperty<T> {
+  get property(): EntityProperty<T & AnyEntity> {
     if (!this._property) {
       const meta = this.owner.__meta;
 

@@ -3,6 +3,7 @@ import type { AnyEntity, Dictionary, EntityData, EntityMetadata, EntityName, Ent
 import type { EntityManager } from '../EntityManager';
 import { EventType, ReferenceType } from '../enums';
 import { Reference } from './Reference';
+import { helper } from './wrap';
 
 export interface FactoryOptions {
   initialized?: boolean;
@@ -25,7 +26,7 @@ export class EntityFactory {
 
   constructor(private readonly em: EntityManager) { }
 
-  create<T extends AnyEntity<T>, P extends string = string>(entityName: EntityName<T>, data: EntityData<T>, options: FactoryOptions = {}): New<T, P> {
+  create<T, P extends string = string>(entityName: EntityName<T>, data: EntityData<T>, options: FactoryOptions = {}): New<T, P> {
     data = Reference.unwrapReference(data);
     options.initialized ??= true;
 
@@ -51,8 +52,8 @@ export class EntityFactory {
     const meta2 = this.processDiscriminatorColumn<T>(meta, data);
     const exists = this.findEntity<T>(data, meta2, options);
 
-    if (exists && exists.__helper!.__initialized && !options.refresh) {
-      exists.__helper!.__initialized = options.initialized;
+    if (exists && helper(exists).__initialized && !options.refresh) {
+      helper(exists).__initialized = options.initialized;
       this.mergeData(meta2, exists, data, options);
 
       return exists as New<T, P>;
@@ -60,15 +61,15 @@ export class EntityFactory {
 
     data = { ...data };
     const entity = exists ?? this.createEntity<T>(data, meta2, options);
-    entity.__helper!.__initialized = options.initialized;
+    helper(entity).__initialized = options.initialized;
     this.hydrate(entity, meta2, data, options);
-    entity.__helper!.__touched = false;
+    helper(entity).__touched = false;
 
     if (exists && meta.discriminatorColumn && !(entity instanceof meta2.class)) {
-      Object.setPrototypeOf(entity, meta2.prototype);
+      Object.setPrototypeOf(entity, meta2.prototype as object);
     }
 
-    if (options.merge && entity.__helper!.hasPrimaryKey()) {
+    if (options.merge && helper(entity).hasPrimaryKey()) {
       this.unitOfWork.registerManaged(entity, data, {
         refresh: options.refresh && options.initialized,
         newEntity: options.newEntity,
@@ -83,11 +84,11 @@ export class EntityFactory {
     return entity as New<T, P>;
   }
 
-  mergeData<T extends AnyEntity<T>>(meta: EntityMetadata<T>, entity: T, data: EntityData<T>, options: FactoryOptions): void {
+  mergeData<T>(meta: EntityMetadata<T>, entity: T, data: EntityData<T>, options: FactoryOptions): void {
     // merge unchanged properties automatically
     data = { ...data };
     const existsData = this.comparator.prepareEntity(entity);
-    const originalEntityData = entity.__helper!.__originalEntityData ?? {} as EntityData<T>;
+    const originalEntityData = helper(entity).__originalEntityData ?? {} as EntityData<T>;
     const diff = this.comparator.diffEntities(meta.className, originalEntityData, existsData);
 
     // version properties are not part of entity snapshots
@@ -111,7 +112,7 @@ export class EntityFactory {
       }
 
       originalEntityData[key] = diff2[key];
-      entity.__helper!.__loadedProperties.add(key);
+      helper(entity).__loadedProperties.add(key);
     });
 
     // in case of joined loading strategy, we need to cascade the merging to possibly loaded relations manually
@@ -131,7 +132,7 @@ export class EntityFactory {
       }
     });
 
-    entity.__helper!.__touched = false;
+    helper(entity).__touched = false;
   }
 
   createReference<T>(entityName: EntityName<T>, id: Primary<T> | Primary<T>[] | Record<string, Primary<T>>, options: Pick<FactoryOptions, 'merge' | 'convertCustomTypes' | 'schema'> = {}): T {
@@ -168,7 +169,7 @@ export class EntityFactory {
     return this.createEntity(data, meta2, options);
   }
 
-  private createEntity<T extends AnyEntity<T>>(data: EntityData<T>, meta: EntityMetadata<T>, options: FactoryOptions): T {
+  private createEntity<T>(data: EntityData<T>, meta: EntityMetadata<T>, options: FactoryOptions): T {
     if (options.newEntity || meta.forceConstructor || meta.virtual) {
       if (!meta.class) {
         throw new Error(`Cannot create entity ${meta.className}, class prototype is unknown`);
@@ -186,7 +187,7 @@ export class EntityFactory {
         return entity;
       }
 
-      entity.__helper!.__schema = this.driver.getSchemaName(meta, options);
+      helper(entity).__schema = this.driver.getSchemaName(meta, options);
 
       if (!options.newEntity) {
         meta.relations
@@ -203,8 +204,8 @@ export class EntityFactory {
 
     // creates new entity instance, bypassing constructor call as its already persisted entity
     const entity = Object.create(meta.class.prototype) as T;
-    entity.__helper!.__managed = true;
-    entity.__helper!.__schema = this.driver.getSchemaName(meta, options);
+    helper(entity).__managed = true;
+    helper(entity).__schema = this.driver.getSchemaName(meta, options);
 
     if (options.merge && !options.newEntity) {
       this.hydrator.hydrateReference(entity, meta, data, this, options.convertCustomTypes, this.driver.getSchemaName(meta, options));
@@ -218,13 +219,13 @@ export class EntityFactory {
     return entity;
   }
 
-  private hydrate<T extends AnyEntity<T>>(entity: T, meta: EntityMetadata<T>, data: EntityData<T>, options: FactoryOptions): void {
+  private hydrate<T>(entity: T, meta: EntityMetadata<T>, data: EntityData<T>, options: FactoryOptions): void {
     if (options.initialized) {
       this.hydrator.hydrate(entity, meta, data, this, 'full', options.newEntity, options.convertCustomTypes, this.driver.getSchemaName(meta, options));
     } else {
       this.hydrator.hydrateReference(entity, meta, data, this, options.convertCustomTypes, this.driver.getSchemaName(meta, options));
     }
-    Object.keys(data).forEach(key => entity.__helper?.__loadedProperties.add(key));
+    Object.keys(data).forEach(key => helper(entity)?.__loadedProperties.add(key));
   }
 
   private findEntity<T>(data: EntityData<T>, meta: EntityMetadata<T>, options: FactoryOptions): T | undefined {

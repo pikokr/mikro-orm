@@ -48,7 +48,7 @@ export class SqlEntityManager<D extends AbstractSqlDriver = AbstractSqlDriver> e
     return this.getDriver().execute(queryOrKnex, params, method, this.getTransactionContext());
   }
 
-  getRepository<T extends AnyEntity<T>, U extends EntityRepository<T> = SqlEntityRepository<T>>(entityName: EntityName<T>): GetRepository<T, U> {
+  getRepository<T extends Record<symbol, any>, U extends EntityRepository<T> = SqlEntityRepository<T>>(entityName: EntityName<T>): GetRepository<T, U> {
     return super.getRepository<T, U>(entityName);
   }
 

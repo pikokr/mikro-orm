@@ -1,20 +1,21 @@
 import { Reference } from './Reference';
-import type { AnyEntity, EntityData, EntityDTO, IWrappedEntity, Loaded } from '../typings';
+import type { EntityData, EntityDTO, IWrappedEntity, Loaded } from '../typings';
 import type { AssignOptions } from './EntityAssigner';
 import { EntityAssigner } from './EntityAssigner';
+import { helper } from './wrap';
 
 export abstract class BaseEntity<T, PK extends keyof T, P extends string = never> implements IWrappedEntity<T, PK, P> {
 
   isInitialized(): boolean {
-    return (this as unknown as AnyEntity<T>).__helper!.__initialized;
+    return helper(this as unknown as T).__initialized;
   }
 
   isTouched(): boolean {
-    return (this as unknown as AnyEntity<T>).__helper!.__touched;
+    return helper(this as unknown as T).__touched;
   }
 
   populated(populated = true): void {
-    (this as unknown as AnyEntity<T>).__helper!.populated(populated);
+    helper(this as unknown as T).populated(populated);
   }
 
   toReference() {
@@ -22,7 +23,7 @@ export abstract class BaseEntity<T, PK extends keyof T, P extends string = never
   }
 
   toObject(ignoreFields: string[] = []): EntityDTO<T> {
-    return (this as unknown as AnyEntity<T>).__helper!.toObject(ignoreFields);
+    return helper(this as unknown as T).toObject(ignoreFields);
   }
 
   toJSON(...args: any[]): EntityDTO<T> {
@@ -30,7 +31,7 @@ export abstract class BaseEntity<T, PK extends keyof T, P extends string = never
   }
 
   toPOJO(): EntityDTO<T> {
-    return (this as unknown as AnyEntity<T>).__helper!.toPOJO();
+    return helper(this as unknown as T).toPOJO();
   }
 
   assign(data: EntityData<T>, options?: AssignOptions): T {
@@ -38,15 +39,15 @@ export abstract class BaseEntity<T, PK extends keyof T, P extends string = never
   }
 
   init<P extends string = never>(populated = true): Promise<Loaded<T, P>> {
-    return (this as unknown as AnyEntity<T>).__helper!.init<P>(populated);
+    return helper(this as unknown as T).init<P>(populated);
   }
 
   getSchema(): string | undefined {
-    return (this as unknown as AnyEntity<T>).__helper!.getSchema();
+    return helper(this as unknown as T).getSchema();
   }
 
   setSchema(schema?: string): void {
-    (this as unknown as AnyEntity<T>).__helper!.setSchema(schema);
+    helper(this as unknown as T).setSchema(schema);
   }
 
 }
